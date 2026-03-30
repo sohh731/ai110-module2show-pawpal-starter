@@ -36,6 +36,30 @@ PawPal+ goes beyond a basic task list with four scheduling features.
 
 ---
 
+## Testing PawPal+
+
+To run the full test suite:
+
+```bash
+python -m pytest test_pawpal.py -v
+```
+
+The suite contains 11 tests covering three main areas.
+
+**Sorting correctness.** Tests confirm that `sort_by_time()` returns tasks in chronological order (07:00 before 12:00 before 18:00) and that tasks with no start time are placed at the end of the list.
+
+**Recurrence logic.** Tests confirm that completing a daily task produces a follow-up task due the next day, that completing a weekly task produces one due 7 days later, and that completing a one-off task (frequency "as needed") returns nothing.
+
+**Conflict detection.** Tests confirm that two tasks sharing an exact start time produce a warning naming both tasks, and that tasks at different times produce a clean "No conflicts detected." message.
+
+**Edge cases.** Additional tests verify that `generate_plan()` handles a pet with zero tasks without crashing, and that tasks exceeding the owner's daily time budget are correctly excluded from the plan.
+
+**Confidence level: 4 out of 5 stars.**
+
+All 11 tests pass. The core scheduling behaviors — priority ordering, time budgeting, recurrence, sorting, and conflict detection — are verified. The rating is not a full 5 because conflict detection only checks for exact start-time matches and does not catch overlapping durations, which is a known limitation. That gap is documented in the Smarter Scheduling section above.
+
+---
+
 ## Getting started
 
 ### Setup
