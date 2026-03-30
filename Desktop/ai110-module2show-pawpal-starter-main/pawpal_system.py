@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import List, Optional, Tuple
+import json
+import os
 
 
 @dataclass
@@ -74,6 +76,50 @@ class Task:
         """Check if the task is high priority."""
         return self.priority >= 7
 
+    @property
+    def priority_label(self) -> str:
+        """Return a human-readable priority level: High, Medium, or Low."""
+        if self.priority >= 7:
+            return "High"
+        if self.priority >= 4:
+            return "Medium"
+        return "Low"
+
+    @property
+    def priority_emoji(self) -> str:
+        """Return a colour-coded emoji for the task's priority level."""
+        return {"High": "🔴", "Medium": "🟡", "Low": "🟢"}[self.priority_label]
+
+    def to_dict(self) -> dict:
+        """Serialize the Task to a plain dictionary for JSON storage."""
+        return {
+            "description": self.description,
+            "duration":    self.duration,
+            "frequency":   self.frequency,
+            "priority":    self.priority,
+            "pet_name":    self.pet_name,
+            "completed":   self.completed,
+            "notes":       self.notes,
+            "start_time":  self.start_time,
+            "due_date":    self.due_date.isoformat() if self.due_date else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'Task':
+        """Reconstruct a Task from a plain dictionary."""
+        due = data.get("due_date")
+        return cls(
+            description=data["description"],
+            duration=   data["duration"],
+            frequency=  data["frequency"],
+            priority=   data.get("priority", 5),
+            pet_name=   data.get("pet_name"),
+            completed=  data.get("completed", False),
+            notes=      data.get("notes", ""),
+            start_time= data.get("start_time"),
+            due_date=   date.fromisoformat(due) if due else None,
+        )
+
 
 @dataclass
 class Pet:
@@ -108,6 +154,28 @@ class Pet:
         """Get a summary string of the pet."""
         return f"{self.name} ({self.species}, {self.age} yrs): {self.health_notes}"
 
+    def to_dict(self) -> dict:
+        """Serialize the Pet and its tasks to a plain dictionary."""
+        return {
+            "name":         self.name,
+            "species":      self.species,
+            "age":          self.age,
+            "health_notes": self.health_notes,
+            "tasks":        [t.to_dict() for t in self.tasks],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'Pet':
+        """Reconstruct a Pet and its tasks from a plain dictionary."""
+        pet = cls(
+            name=        data["name"],
+            species=     data["species"],
+            age=         data["age"],
+            health_notes=data.get("health_notes", ""),
+        )
+        pet.tasks = [Task.from_dict(t) for t in data.get("tasks", [])]
+        return pet
+
 
 @dataclass
 class Owner:
@@ -136,6 +204,58 @@ class Owner:
         """Check if the owner can schedule a task of given duration."""
         return duration <= (self.daily_time_available - used_time)
 
+    def to_dict(self) -> dict:
+        """Serialize the Owner and all nested pets/tasks to a plain dictionary."""
+        return {
+            "name":                 self.name,
+            "daily_time_available": self.daily_time_available,
+            "preferences":          list(self.preferences),
+            "pets":                 [p.to_dict() for p in self.pets],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'Owner':
+        """Reconstruct an Owner with all nested pets and tasks from a plain dictionary."""
+        owner = cls(
+            name=                data["name"],
+            daily_time_available=data["daily_time_available"],
+            preferences=         data.get("preferences", []),
+        )
+        owner.pets = [Pet.from_dict(p) for p in data.get("pets", [])]
+        return owner
+
+    def save_to_json(self, filepath: str = "data.json") -> None:
+        """Persist the owner, pets, and all tasks to a JSON file.
+
+        Serializes the full object graph to a human-readable JSON file using
+        custom ``to_dict()`` methods on each class. Dates are stored as
+        ISO-8601 strings (YYYY-MM-DD) and restored on load.
+
+        Args:
+            filepath (str): Path to write the JSON file. Defaults to 'data.json'.
+        """
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(self.to_dict(), f, indent=2)
+
+    @classmethod
+    def load_from_json(cls, filepath: str = "data.json") -> Optional['Owner']:
+        """Load and reconstruct an Owner from a JSON file.
+
+        Returns None if the file does not exist, allowing the app to fall back
+        to a default Owner on first run without raising an error.
+
+        Args:
+            filepath (str): Path of the JSON file to read. Defaults to 'data.json'.
+
+        Returns:
+            Optional[Owner]: The reconstructed Owner, or None if file not found.
+        """
+        if not os.path.exists(filepath):
+            return None
+        with open(filepath, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return cls.from_dict(data)
+
 
 @dataclass
 class Scheduler:
@@ -153,6 +273,28 @@ class Scheduler:
     def get_pending_tasks(self) -> List[Task]:
         """Get all uncompleted tasks."""
         return [task for task in self.get_all_tasks() if not task.completed]
+
+    def reschedule_overdue(self) -> List[Task]:
+        """Find all overdue recurring tasks and reschedule them to today.
+
+        Scans every task across all pets for recurring tasks (daily or weekly)
+        whose due_date has already passed. Each overdue task has its due_date
+        reset to today so it re-enters the active schedule. Completed tasks are
+        excluded — only pending overdue tasks are rescheduled.
+
+        Returns:
+            List[Task]: The tasks that were rescheduled, in the order they
+            were found. Returns an empty list if nothing is overdue.
+        """
+        today = date.today()
+        overdue = [
+            t for t in self.get_pending_tasks()
+            if t.due_date and t.due_date < today
+            and t.frequency.lower() in {'daily', 'weekly'}
+        ]
+        for task in overdue:
+            task.due_date = today
+        return overdue
 
     def mark_task_complete(self, task: Task) -> Optional[Task]:
         """Complete a task and schedule next occurrence for daily/weekly tasks."""
@@ -188,8 +330,8 @@ class Scheduler:
         """Generate a daily schedule plan using a greedy priority-first algorithm.
 
         Retrieves all uncompleted tasks across every pet, sorts them by
-        descending priority and then ascending duration (so equal-priority tasks
-        that are shorter are preferred when time is tight), and greedily appends
+        descending priority first, then by ascending start time (tasks with no
+        start time sort last within their priority group), and greedily appends
         each task to the plan as long as its duration fits within the owner's
         remaining daily budget.  Updates ``self.plan`` and ``self.reasoning``
         in-place before returning them.
@@ -199,8 +341,16 @@ class Scheduler:
             human-readable string explaining how many tasks were selected and
             how much time was used vs. available.
         """
+        def sort_key(t: Task):
+            if t.start_time:
+                h, m = map(int, t.start_time.split(':'))
+                time_val = h * 60 + m
+            else:
+                time_val = 24 * 60  # no start time sorts last
+            return (-t.priority, time_val)
+
         uncompleted = self.get_pending_tasks()
-        ordered = sorted(uncompleted, key=lambda t: (-t.priority, t.duration))
+        ordered = sorted(uncompleted, key=sort_key)
 
         self.plan.clear()
         used_time = 0
@@ -297,3 +447,61 @@ class Scheduler:
             warnings.append("No conflicts detected.")
 
         return warnings
+
+    def find_next_available_slot(self, duration: int, day_start: int = 7 * 60, day_end: int = 21 * 60) -> Optional[str]:
+        """Find the earliest open time slot in the day that fits a task of the given duration.
+
+        Collects all pending tasks that have both a start_time and a duration,
+        converts them into (start, end) minute intervals, sorts them, then walks
+        the gaps between intervals looking for the first window that is at least
+        as long as the requested duration. The search is bounded by day_start and
+        day_end (both in minutes since midnight; defaults are 07:00 and 21:00).
+
+        The algorithm runs in O(n log n) time due to the sort, where n is the
+        number of timed tasks.
+
+        Args:
+            duration (int): The length of the task to fit, in minutes.
+            day_start (int): Earliest allowed start in minutes since midnight (default 420 = 07:00).
+            day_end (int): Latest allowed end in minutes since midnight (default 1260 = 21:00).
+
+        Returns:
+            Optional[str]: The earliest available start time as "HH:MM", or None if
+            no slot of the requested length exists within the day window.
+        """
+        timed_tasks = [
+            t for t in self.get_pending_tasks()
+            if t.start_time
+        ]
+
+        # Build (start_min, end_min) intervals for every timed task
+        intervals: List[Tuple[int, int]] = []
+        for task in timed_tasks:
+            h, m = map(int, task.start_time.split(':'))
+            start_min = h * 60 + m
+            end_min   = start_min + task.duration
+            intervals.append((start_min, end_min))
+
+        # Sort by start time and merge overlapping intervals
+        intervals.sort()
+        merged: List[Tuple[int, int]] = []
+        for start, end in intervals:
+            if merged and start < merged[-1][1]:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+            else:
+                merged.append((start, end))
+
+        # Walk the gaps to find the first window >= duration
+        cursor = day_start
+        for seg_start, seg_end in merged:
+            if seg_start > cursor and (seg_start - cursor) >= duration:
+                h, m = divmod(cursor, 60)
+                return f"{h:02d}:{m:02d}"
+            cursor = max(cursor, seg_end)
+
+        # Check the gap after the last task
+        if (day_end - cursor) >= duration:
+            h, m = divmod(cursor, 60)
+            return f"{h:02d}:{m:02d}"
+
+        return None

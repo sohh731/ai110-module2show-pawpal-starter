@@ -163,3 +163,54 @@ def test_generate_plan_excludes_tasks_over_budget():
     descriptions = [t.description for t in plan]
     assert "Short walk" in descriptions
     assert "Long grooming" not in descriptions
+
+
+# --- Next available slot ---
+
+def test_find_next_available_slot_basic():
+    """Verify the first open gap after existing tasks is returned correctly."""
+    owner = Owner(name="Alex", daily_time_available=180)
+    pet = Pet(name="Milo", species="Dog", age=2)
+    owner.add_pet(pet)
+
+    # 07:00–07:30 and 08:00–08:20 are taken
+    pet.add_task(Task(description="Morning walk", duration=30, frequency="daily", start_time="07:00"))
+    pet.add_task(Task(description="Feeding",      duration=20, frequency="daily", start_time="08:00"))
+
+    scheduler = Scheduler(owner=owner)
+    slot = scheduler.find_next_available_slot(duration=30)
+
+    # First open 30-min gap is 07:30 (between 07:30 and 08:00)
+    assert slot == "07:30"
+
+
+def test_find_next_available_slot_no_gap():
+    """Verify None is returned when no gap large enough exists."""
+    owner = Owner(name="Alex", daily_time_available=180)
+    pet = Pet(name="Milo", species="Dog", age=2)
+    owner.add_pet(pet)
+
+    # Fill 07:00–21:00 with back-to-back 60-min blocks
+    for hour in range(7, 21):
+        pet.add_task(Task(
+            description=f"Block {hour}",
+            duration=60,
+            frequency="daily",
+            start_time=f"{hour:02d}:00"
+        ))
+
+    scheduler = Scheduler(owner=owner)
+    slot = scheduler.find_next_available_slot(duration=30)
+    assert slot is None
+
+
+def test_find_next_available_slot_no_timed_tasks():
+    """Verify the day_start is returned when no tasks have a start time."""
+    owner = Owner(name="Alex", daily_time_available=180)
+    pet = Pet(name="Milo", species="Dog", age=2)
+    owner.add_pet(pet)
+    pet.add_task(Task(description="Unscheduled task", duration=20, frequency="daily"))
+
+    scheduler = Scheduler(owner=owner)
+    slot = scheduler.find_next_available_slot(duration=30)
+    assert slot == "07:00"

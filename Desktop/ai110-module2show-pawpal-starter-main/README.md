@@ -1,26 +1,62 @@
-# PawPal+ (Module 2 Project)
+# PawPal+
 
-You are building **PawPal+**, a Streamlit app that helps a pet owner plan care tasks for their pet.
+A smart daily pet care planner built with Python and Streamlit. PawPal+ helps pet owners schedule care tasks across multiple pets, respects their available time, and explains every scheduling decision it makes.
 
-## Scenario
+---
 
-A busy pet owner needs help staying consistent with pet care. They want an assistant that can:
+## Features
 
-- Track pet care tasks (walks, feeding, meds, enrichment, grooming, etc.)
-- Consider constraints (time available, priority, owner preferences)
-- Produce a daily plan and explain why it chose that plan
+**Priority-first scheduling.**
+`Scheduler.generate_plan()` uses a greedy algorithm that sorts all pending tasks by descending priority, then ascending duration. Tasks with higher importance (e.g. medication, feeding) are always selected first. When two tasks share the same priority, the shorter one is preferred so more tasks fit within the daily time budget.
 
-Your job is to design the system first (UML), then implement the logic in Python, then connect it to the Streamlit UI.
+**Chronological sorting.**
+`sort_by_time()` converts each task's `start_time` (HH:MM string) into total minutes since midnight and sorts numerically. Tasks with no start time are automatically placed at the end of the day. The schedule is shown both by priority order and chronological order so the owner can read it either way.
 
-## What you will build
+**Flexible task filtering.**
+`filter_tasks()` lets the UI slice the full task list by pet name, completion status, or both at once. This powers per-pet views and pending-only displays without duplicating any logic.
 
-Your final app should:
+**Next available slot finder.**
+`find_next_available_slot(duration)` uses an interval scheduling algorithm to find the earliest open window in the day that fits a task of the requested length. It converts all timed tasks into `(start, end)` minute intervals, sorts and merges overlapping ones, then walks the gaps to return the first slot large enough. The search is bounded by a configurable day window (default 07:00–21:00). This was implemented using Agent Mode to reason through the interval-merging logic and edge cases before writing the code.
 
-- Let a user enter basic owner + pet info
-- Let a user add/edit tasks (duration + priority at minimum)
-- Generate a daily schedule/plan based on constraints and priorities
-- Display the plan clearly (and ideally explain the reasoning)
-- Include tests for the most important scheduling behaviors
+**Conflict warnings.**
+`detect_conflicts()` groups all pending tasks by exact start time. Any slot with two or more tasks triggers a `st.warning` in the UI that names every conflicting task and its pet, and tells the owner to shift one to a different time.
+
+**Daily and weekly recurrence.**
+`Task.mark_completed()` automatically creates the next occurrence of a recurring task. Daily tasks get a new due date of today + 1 day; weekly tasks get today + 7 days. One-off tasks ("as needed") return nothing when completed.
+
+**Multi-pet support.**
+An `Owner` can have any number of `Pet` objects. The scheduler aggregates tasks from every pet and plans across all of them in a single pass.
+
+---
+
+## Demo
+
+Run the app locally:
+
+```bash
+streamlit run app.py
+```
+
+<a href="/course_images/ai110/pawpal_screenshot.png" target="_blank">
+  <img src='/course_images/ai110/pawpal_screenshot.png' title='PawPal App' width='' alt='PawPal App' class='center-block' />
+</a>
+
+> To update the screenshot: run the app, take a screenshot, save it as `pawpal_screenshot.png` in this folder, then replace the filename above if needed.
+
+---
+
+## Project Structure
+
+```
+pawpal_system.py   — core classes: Task, Pet, Owner, Scheduler
+app.py             — Streamlit UI
+test_pawpal.py     — automated test suite (11 tests)
+uml_final.png      — final class diagram
+reflection.md      — design decisions and tradeoffs
+requirements.txt   — dependencies
+```
+
+---
 
 ## Smarter Scheduling
 
@@ -56,7 +92,7 @@ The suite contains 11 tests covering three main areas.
 
 **Confidence level: 4 out of 5 stars.**
 
-All 11 tests pass. The core scheduling behaviors — priority ordering, time budgeting, recurrence, sorting, and conflict detection — are verified. The rating is not a full 5 because conflict detection only checks for exact start-time matches and does not catch overlapping durations, which is a known limitation. That gap is documented in the Smarter Scheduling section above.
+All 11 tests pass. The core scheduling behaviors — priority ordering, time budgeting, recurrence, sorting, and conflict detection — are verified. The rating is not a full 5 because conflict detection only checks for exact start-time matches and does not catch overlapping durations, which is a known limitation.
 
 ---
 
@@ -70,12 +106,8 @@ source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### Suggested workflow
+### Run
 
-1. Read the scenario carefully and identify requirements and edge cases.
-2. Draft a UML diagram (classes, attributes, methods, relationships).
-3. Convert UML into Python class stubs (no logic yet).
-4. Implement scheduling logic in small increments.
-5. Add tests to verify key behaviors.
-6. Connect your logic to the Streamlit UI in `app.py`.
-7. Refine UML so it matches what you actually built.
+```bash
+streamlit run app.py
+```
