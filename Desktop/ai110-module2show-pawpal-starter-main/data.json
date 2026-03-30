@@ -1,0 +1,37 @@
+{
+  "name": "S H",
+  "daily_time_available": 120,
+  "preferences": [],
+  "pets": [
+    {
+      "name": "Soph",
+      "species": "Dog",
+      "age": 1,
+      "health_notes": "",
+      "tasks": [
+        {
+          "description": "Morning walk",
+          "duration": 20,
+          "frequency": "daily",
+          "priority": 5,
+          "pet_name": "Soph",
+          "completed": false,
+          "notes": "",
+          "start_time": null,
+          "due_date": null
+        },
+        {
+          "description": "groom",
+          "duration": 100,
+          "frequency": "weekly",
+          "priority": 3,
+          "pet_name": "Soph",
+          "completed": false,
+          "notes": "",
+          "start_time": null,
+          "due_date": null
+        }
+      ]
+    }
+  ]
+}
